@@ -166,6 +166,43 @@ const DeviceWidget = ({ device, roomName, homeName, onRemove, onRefresh }: Devic
         );
       
       default:
+        // Sensör değerleri için özel görünüm
+        if (currentDevice.type === Label.TEMPERATURE_SENSOR || currentDevice.type === Label.HUMIDITY_SENSOR) {
+          const value = currentDevice.currentValue ? parseFloat(currentDevice.currentValue) : 0;
+          
+          return (
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative">
+                <div className={`text-2xl font-bold ${currentDevice.type === Label.TEMPERATURE_SENSOR ? 'text-red-400' : 'text-blue-400'}`}>
+                  {isLoading ? (
+                    <div className="flex items-center gap-2">
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>...</span>
+                    </div>
+                  ) : (
+                    <>
+                      {value.toFixed(1)}
+                      <span className="text-lg ml-1">
+                        {currentDevice.type === Label.TEMPERATURE_SENSOR ? '°C' : '%'}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="absolute -top-1 -right-1">
+                  {currentDevice.type === Label.TEMPERATURE_SENSOR ? (
+                    <Thermometer size={14} className="text-red-400" />
+                  ) : (
+                    <Droplet size={14} className="text-blue-400" />
+                  )}
+                </div>
+              </div>
+              <div className="text-xs text-gray-400">
+                {currentDevice.type === Label.TEMPERATURE_SENSOR ? 'Sıcaklık' : 'Nem'} Sensörü
+              </div>
+            </div>
+          );
+        }
+        
         return (
           <div className="text-gray-400 text-xs pt-2">
             {currentDevice.currentValue || 'No value'}

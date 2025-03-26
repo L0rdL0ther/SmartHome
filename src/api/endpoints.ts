@@ -1,6 +1,6 @@
 // Base URLs for different services
 export const API_URLS = {
-  BASE_URL: 'http://localhost:8080'
+  BASE_URL: 'http://192.168.1.5:8080'
 } as const;
 
 // User Endpoints

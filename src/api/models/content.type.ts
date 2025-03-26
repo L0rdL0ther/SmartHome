@@ -153,10 +153,12 @@ export interface RDevice {
 }
 
 export interface UDevice {
+    esp32Id?: number;
     name?: string;
     type?: Label;
     currentValue?: string;
     controlType?: ControlType;
+    esp32DeviceId?: number;
 }
 
 // ESP Interfaces

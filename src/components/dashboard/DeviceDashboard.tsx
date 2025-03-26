@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Search, Zap, Thermometer, LightbulbOff, Power, Coffee, Wind, Droplet, Cpu, MoreVertical, Edit, Trash, X } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Zap, Thermometer, LightbulbOff, Power, Coffee, Wind, Droplet, Cpu, MoreVertical, Edit, Trash, X, RefreshCw } from 'lucide-react';
 import { deviceService, espService } from '../../api/services';
 import { RDevice, RRoom, RHome, Label, ControlType, REsp } from '../../api/models/content.type';
 
@@ -31,10 +31,14 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
   const [updatedDeviceData, setUpdatedDeviceData] = useState({
     name: '',
     type: Label.LIGHT,
-    controlType: ControlType.SWITCH
+    controlType: ControlType.SWITCH,
+    esp32DeviceId: 0
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshingDevices, setRefreshingDevices] = useState<number[]>([]);
+  const [controllingDevices, setControllingDevices] = useState<number[]>([]);
   
   // Menu dışında bir yere tıklandığında menüyü kapatmak için kullanılacak ref
   const menuRef = useRef<HTMLDivElement>(null);
@@ -77,7 +81,8 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
       setUpdatedDeviceData({
         name: deviceToUpdate.name,
         type: deviceToUpdate.type,
-        controlType: deviceToUpdate.controlType
+        controlType: deviceToUpdate.controlType,
+        esp32DeviceId: deviceToUpdate.esp32DeviceId || 0
       });
     }
   }, [deviceToUpdate]);
@@ -178,13 +183,19 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
       return;
     }
 
+    if (!updatedDeviceData.esp32DeviceId) {
+      setError('Please select an ESP32 controller for your device');
+      return;
+    }
+
     setIsUpdating(true);
     setError(null);
     try {
       const updatedDevice = await deviceService.updateDevice(deviceToUpdate.id, {
         name: updatedDeviceData.name,
         type: updatedDeviceData.type,
-        controlType: updatedDeviceData.controlType
+        controlType: updatedDeviceData.controlType,
+        esp32DeviceId: updatedDeviceData.esp32DeviceId
       });
       setShowUpdateModal(false);
       setDeviceToUpdate(null);
@@ -202,6 +213,9 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
   };
 
   const handleDeviceControl = async (deviceId: number, value: string) => {
+    if (controllingDevices.includes(deviceId)) return;
+    
+    setControllingDevices(prev => [...prev, deviceId]);
     try {
       await deviceService.writeDeviceData(deviceId, value);
       
@@ -217,10 +231,49 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
           );
         } catch (err) {
           console.error('Error fetching updated device data:', err);
+        } finally {
+          setControllingDevices(prev => prev.filter(id => id !== deviceId));
         }
       }, 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to control device');
+      setControllingDevices(prev => prev.filter(id => id !== deviceId));
+    }
+  };
+
+  // Belirli bir cihazı yenileme işlevi
+  const refreshDevice = async (deviceId: number) => {
+    if (refreshingDevices.includes(deviceId)) return;
+    
+    setRefreshingDevices(prev => [...prev, deviceId]);
+    try {
+      const updatedDevice = await deviceService.getDeviceById(deviceId);
+      setDevices(prev => 
+        prev.map(device => device.id === deviceId ? updatedDevice : device)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    } catch (err) {
+      console.error('Error refreshing device:', err);
+    } finally {
+      setRefreshingDevices(prev => prev.filter(id => id !== deviceId));
+    }
+  };
+
+  // Cihazları yenileme işlevi
+  const refreshDevices = async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    setError(null);
+    try {
+      const response = await deviceService.getDevicesByRoomId(selectedRoom.id, 0, 100);
+      const sortedDevices = (response.content || []).sort((a, b) => a.name.localeCompare(b.name));
+      setDevices(sortedDevices);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh devices');
+      console.error('Error refreshing devices:', err);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -276,33 +329,68 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
       case ControlType.SWITCH:
         // Cihazın mevcut değeri 1 ise açık, 0 veya başka bir değer ise kapalı olarak kabul edelim
         const isOn = device.currentValue === "1";
+        const isControlling = controllingDevices.includes(device.id);
         return (
           <div className="flex items-center justify-between">
             <button 
               onClick={() => handleDeviceControl(device.id, isOn ? "0" : "1")}
               className={`relative inline-flex h-6 w-11 items-center rounded-full ${isOn ? 'bg-blue-600' : 'bg-gray-700'} transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500`}
+              disabled={isControlling}
             >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isOn ? 'translate-x-6' : 'ml-1'}`} />
+              {isControlling ? (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              ) : (
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isOn ? 'translate-x-6' : 'ml-1'}`} />
+              )}
             </button>
-            <span className={`text-sm ${isOn ? 'text-blue-400' : 'text-gray-400'}`}>{isOn ? 'Açık' : 'Kapalı'}</span>
+            <span className={`text-sm ${isOn ? 'text-blue-400' : 'text-gray-400'}`}>
+              {isControlling ? (
+                <div className="flex items-center gap-1">
+                  <RefreshCw size={12} className="animate-spin" />
+                  {isOn ? 'Kapatılıyor...' : 'Açılıyor...'}
+                </div>
+              ) : (
+                isOn ? 'Açık' : 'Kapalı'
+              )}
+            </span>
           </div>
         );
       
       case ControlType.SLIDER:
         const sliderValue = device.currentValue ? parseInt(device.currentValue) : 50;
+        const isSliderControlling = controllingDevices.includes(device.id);
         return (
           <div className="w-full">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={sliderValue}
-              onChange={(e) => handleDeviceControl(device.id, e.target.value)}
-              className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-            />
+            <div className="relative">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={sliderValue}
+                onChange={(e) => handleDeviceControl(device.id, e.target.value)}
+                className={`w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500 ${isSliderControlling ? 'opacity-50' : ''}`}
+                disabled={isSliderControlling}
+              />
+              {isSliderControlling && (
+                <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                  <RefreshCw size={16} className="animate-spin text-blue-400" />
+                </div>
+              )}
+            </div>
             <div className="flex justify-between mt-1">
               <span className="text-xs text-gray-400">0%</span>
-              <span className="text-xs text-blue-400">{sliderValue}%</span>
+              <span className="text-xs text-blue-400">
+                {isSliderControlling ? (
+                  <div className="flex items-center gap-1">
+                    <RefreshCw size={10} className="animate-spin" />
+                    Ayarlanıyor...
+                  </div>
+                ) : (
+                  `${sliderValue}%`
+                )}
+              </span>
               <span className="text-xs text-gray-400">100%</span>
             </div>
           </div>
@@ -310,22 +398,71 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
       
       case ControlType.NUMERIC_INPUT:
         const numValue = device.currentValue ? parseInt(device.currentValue) : 24;
+        const isNumericControlling = controllingDevices.includes(device.id);
         return (
           <div className="flex items-center">
             <button 
               className="bg-gray-800 text-gray-300 px-2 py-1 rounded-l-lg"
               onClick={() => handleDeviceControl(device.id, (numValue - 1).toString())}
-              disabled={numValue <= 0}
+              disabled={numValue <= 0 || isNumericControlling}
             >-</button>
-            <div className="bg-gray-700 px-4 py-1">{numValue}°C</div>
+            <div className="bg-gray-700 px-4 py-1 relative">
+              {isNumericControlling ? (
+                <div className="flex items-center justify-center gap-1 min-w-[50px]">
+                  <RefreshCw size={12} className="animate-spin text-blue-400" />
+                  <span className="text-blue-400">...</span>
+                </div>
+              ) : (
+                `${numValue}°C`
+              )}
+            </div>
             <button 
               className="bg-gray-800 text-gray-300 px-2 py-1 rounded-r-lg"
               onClick={() => handleDeviceControl(device.id, (numValue + 1).toString())}
+              disabled={isNumericControlling}
             >+</button>
           </div>
         );
       
       default:
+        // Sensör değerleri için özel görünüm
+        if (device.type === Label.TEMPERATURE_SENSOR || device.type === Label.HUMIDITY_SENSOR) {
+          const value = device.currentValue ? parseFloat(device.currentValue) : 0;
+          const isRefreshing = refreshingDevices.includes(device.id);
+          
+          return (
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative">
+                <div className={`text-3xl font-bold ${device.type === Label.TEMPERATURE_SENSOR ? 'text-red-400' : 'text-blue-400'}`}>
+                  {isRefreshing ? (
+                    <div className="flex items-center gap-2">
+                      <RefreshCw size={16} className="animate-spin" />
+                      <span>...</span>
+                    </div>
+                  ) : (
+                    <>
+                      {value.toFixed(1)}
+                      <span className="text-xl ml-1">
+                        {device.type === Label.TEMPERATURE_SENSOR ? '°C' : '%'}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="absolute -top-2 -right-2">
+                  {device.type === Label.TEMPERATURE_SENSOR ? (
+                    <Thermometer size={16} className="text-red-400" />
+                  ) : (
+                    <Droplet size={16} className="text-blue-400" />
+                  )}
+                </div>
+              </div>
+              <div className="text-sm text-gray-400">
+                {device.type === Label.TEMPERATURE_SENSOR ? 'Sıcaklık' : 'Nem'} Sensörü
+              </div>
+            </div>
+          );
+        }
+        
         return (
           <div className="text-gray-400 text-sm">
             {device.currentValue || 'No value'}
@@ -368,7 +505,7 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
             >
               <ArrowLeft size={20} />
             </button>
-            <div>
+            <div className="flex-grow">
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
                   {selectedRoom.name}
@@ -378,6 +515,14 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
               </div>
               <p className="text-gray-500 text-sm">{selectedRoom.description || 'No description'}</p>
             </div>
+            <button 
+              onClick={refreshDevices}
+              disabled={isRefreshing || isLoading}
+              className={`flex items-center justify-center w-10 h-10 rounded-xl ${isRefreshing ? 'bg-blue-600/20 text-blue-400' : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400 hover:text-white'} transition-colors`}
+              title="Cihazları Yenile"
+            >
+              <RefreshCw size={18} className={isRefreshing ? "animate-spin" : ""} />
+            </button>
           </div>
         </div>
       </header>
@@ -550,45 +695,61 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
                             </span>
                           </div>
                           
-                          {/* Options Menu Button */}
-                          <div className="relative" ref={activeMenuDevice === device.id ? menuRef : undefined}>
+                          <div className="flex items-center gap-2">
+                            {/* Refresh Button */}
                             <button
-                              onClick={() => setActiveMenuDevice(activeMenuDevice === device.id ? null : device.id)}
-                              className="ml-auto flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800/70 hover:bg-gray-700/80 transition-colors mt-1"
-                              aria-label="Device options"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                refreshDevice(device.id);
+                              }}
+                              className={`flex items-center justify-center w-7 h-7 rounded-lg ${refreshingDevices.includes(device.id) ? 'bg-blue-600/20 text-blue-400' : 'bg-gray-800/70 hover:bg-gray-700/80 text-gray-400 hover:text-white'} transition-colors`}
+                              aria-label="Refresh device"
+                              title="Cihazı Yenile"
+                              disabled={refreshingDevices.includes(device.id)}
                             >
-                              <MoreVertical size={14} />
+                              <RefreshCw size={14} className={refreshingDevices.includes(device.id) ? "animate-spin" : ""} />
                             </button>
                             
-                            {/* Options Menu */}
-                            {activeMenuDevice === device.id && (
-                              <div className="absolute right-0 top-9 z-20 w-44 bg-gray-800 border border-gray-700 rounded-xl shadow-lg overflow-hidden">
-                                <div className="py-1">
-                                  <button
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-gray-200 hover:bg-gray-700"
-                                    onClick={() => {
-                                      setDeviceToUpdate(device);
-                                      setShowUpdateModal(true);
-                                      setActiveMenuDevice(null);
-                                    }}
-                                  >
-                                    <Edit size={14} className="text-blue-400" />
-                                    Düzenle
-                                  </button>
-                                  
-                                  <button
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-gray-200 hover:bg-gray-700"
-                                    onClick={() => {
-                                      setDeviceToUpdate(device);
-                                      setShowDeleteConfirm(true);
-                                    }}
-                                  >
-                                    <Trash size={14} className="text-red-400" />
-                                    Sil
-                                  </button>
+                            {/* Options Menu Button */}
+                            <div className="relative" ref={activeMenuDevice === device.id ? menuRef : undefined}>
+                              <button
+                                onClick={() => setActiveMenuDevice(activeMenuDevice === device.id ? null : device.id)}
+                                className="flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800/70 hover:bg-gray-700/80 transition-colors"
+                                aria-label="Device options"
+                              >
+                                <MoreVertical size={14} />
+                              </button>
+                              
+                              {/* Options Menu */}
+                              {activeMenuDevice === device.id && (
+                                <div className="absolute right-0 top-9 z-20 w-44 bg-gray-800 border border-gray-700 rounded-xl shadow-lg overflow-hidden">
+                                  <div className="py-1">
+                                    <button
+                                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-gray-200 hover:bg-gray-700"
+                                      onClick={() => {
+                                        setDeviceToUpdate(device);
+                                        setShowUpdateModal(true);
+                                        setActiveMenuDevice(null);
+                                      }}
+                                    >
+                                      <Edit size={14} className="text-blue-400" />
+                                      Düzenle
+                                    </button>
+                                    
+                                    <button
+                                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-gray-200 hover:bg-gray-700"
+                                      onClick={() => {
+                                        setDeviceToUpdate(device);
+                                        setShowDeleteConfirm(true);
+                                      }}
+                                    >
+                                      <Trash size={14} className="text-red-400" />
+                                      Sil
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -919,6 +1080,56 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
                       <option value={ControlType.RGB_PICKER}>RGB Color Picker</option>
                       <option value={ControlType.TEXT_DISPLAY}>Text Display</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="esp32DeviceId" className="block text-sm font-medium text-gray-300 mb-1">
+                      ESP32 Controller <span className="text-blue-400">*</span>
+                    </label>
+                    <div className="relative">
+                      {loadingEsp && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                      )}
+                      <select
+                        id="esp32DeviceId"
+                        value={updatedDeviceData.esp32DeviceId || ''}
+                        onChange={(e) => setUpdatedDeviceData({...updatedDeviceData, esp32DeviceId: parseInt(e.target.value)})}
+                        className={`bg-gray-800/50 border ${updatedDeviceData.esp32DeviceId ? 'border-gray-700' : 'border-amber-700'} rounded-xl py-3 px-4 w-full focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent text-gray-200`}
+                        disabled={loadingEsp}
+                        required
+                      >
+                        <option value="" disabled>ESP32 Kontrolcü Seçiniz...</option>
+                        {espDevices.length === 0 ? (
+                          <option value="" disabled>Aktif ESP32 bulunamadı</option>
+                        ) : (
+                          espDevices.map(esp => (
+                            <option key={esp.id} value={esp.id}>
+                              {esp.title || `ESP32 #${esp.id}`} 
+                              {esp.token ? " (Online)" : " (Offline)"}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                    {espDevices.length === 0 && !loadingEsp && (
+                      <div className="mt-2 text-sm bg-amber-900/30 border border-amber-800/50 p-3 rounded-lg text-amber-300">
+                        <p className="font-semibold mb-1">ESP32 Kontrolcü Gerekli!</p>
+                        <p>
+                          Cihaz eklemek için önce bir ESP32 kontrolcü eklemeniz gerekir. Üst menüdeki 
+                          <span className="inline-flex items-center mx-1 px-2 py-1 bg-purple-900/30 rounded text-purple-300">
+                            <Cpu size={12} className="mr-1" /> ESP32 Controllers
+                          </span> 
+                          bölümüne gidin ve bir ESP32 kontrolcü ekleyin.
+                        </p>
+                      </div>
+                    )}
+                    {espDevices.length > 0 && !updatedDeviceData.esp32DeviceId && (
+                      <p className="mt-1 text-xs text-amber-400">
+                        Bu cihazı kontrol edecek ESP32 kontrolcüyü seçmelisiniz
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
