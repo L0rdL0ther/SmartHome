@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Grid, Home, Plus, Search, Trash, Sun, Moon, Thermometer, Wind, Droplets, Power, ChevronRight, Settings } from 'lucide-react';
+import { ArrowLeft, Grid, Home, Plus, Search, Sun, Moon, Thermometer, Droplets, Power, ChevronRight, Settings } from 'lucide-react';
 import { roomService } from '../../api/services';
 import { RRoom, RHome } from '../../api/models/content.type';
 import DeviceDashboard from './DeviceDashboard';

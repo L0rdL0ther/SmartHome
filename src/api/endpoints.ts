@@ -1,6 +1,14 @@
 // Base URLs for different services
+declare global {
+  interface Window {
+    ENV_CONFIG?: {
+      API_URL: string;
+    };
+  }
+}
+
 export const API_URLS = {
-  BASE_URL: 'http://192.168.1.5:8080'
+  BASE_URL: window.ENV_CONFIG?.API_URL || process.env.REACT_APP_API_URL || 'http://nahdontdoit:8080'
 } as const;
 
 // User Endpoints

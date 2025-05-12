@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Plus, LogOut, Search, Settings, Menu, X, ChevronRight, TrendingUp, Zap, Shield, Users, Cpu } from 'lucide-react';
+import { Home, Plus, LogOut, Search, Settings, Menu, X, ChevronRight, Cpu } from 'lucide-react';
 import { homeService, roomService } from '../../api/services';
 import { RHome } from '../../api/models/content.type';
 import RoomDashboard from './RoomDashboard';

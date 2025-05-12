@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Search, Zap, Thermometer, LightbulbOff, Power, Coffee, Wind, Droplet, Cpu, MoreVertical, Edit, Trash, X, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Zap, Thermometer, LightbulbOff, Power, Wind, Droplet, Cpu, MoreVertical, Edit, Trash, X, RefreshCw } from 'lucide-react';
 import { deviceService, espService } from '../../api/services';
 import { RDevice, RRoom, RHome, Label, ControlType, REsp } from '../../api/models/content.type';
 
@@ -35,7 +35,6 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
     esp32DeviceId: 0
   });
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshingDevices, setRefreshingDevices] = useState<number[]>([]);
   const [controllingDevices, setControllingDevices] = useState<number[]>([]);
@@ -188,7 +187,7 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
       return;
     }
 
-    setIsUpdating(true);
+  
     setError(null);
     try {
       const updatedDevice = await deviceService.updateDevice(deviceToUpdate.id, {
@@ -208,7 +207,7 @@ const DeviceDashboard = ({ selectedRoom, selectedHome, onBackToRooms }: DeviceDa
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update device');
     } finally {
-      setIsUpdating(false);
+     
     }
   };
 

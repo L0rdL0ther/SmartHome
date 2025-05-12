@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import Login from './components/auth/Login'
 import SignUp from './components/auth/SignUp'
 import HomeDashboard from './components/dashboard/HomeDashboard'
-import { RHome } from './api/models/content.type';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
